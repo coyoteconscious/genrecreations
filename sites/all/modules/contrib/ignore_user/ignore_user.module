@@ -1,0 +1,443 @@
+<?php
+
+/**
+ * Implements hook_help().
+ */
+function ignore_user_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#ignore_user':
+      return t("<p>The Ignore User module allows users to choose to ignore node and comment content created by other users. A link is provided in the content to show or hide the content from the ignored user in the node or comment view.</p>");
+  }
+}
+
+/**
+ * Implements hook_init().
+ */
+function ignore_user_init() {
+  drupal_add_js(drupal_get_path('module', 'ignore_user') . '/ignore_user.js', 'module');
+}
+
+/**
+ * Implements hook_permission().
+ */
+function ignore_user_permission() {
+  return array(
+    'ignore user' => array(
+      'title' => t('Ignore Other Users'),
+      'description' => t('User with this permission can add a user to an ignore list.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function ignore_user_menu() {
+  $items = array();
+
+  $items['ignore_user/list'] = array(
+    'title' => 'My ignore list',
+    'description' => 'Add or remove users that you wish to ignore.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ignore_user_ignore_list_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('ignore user'),
+  );
+
+  $items['ignore_user/add/%'] = array(
+    'title' => 'Add to ignore list',
+    'description' => 'Add user that you wish to ignore.',
+    'page callback' => 'ignore_user_list_add_user',
+    'page arguments' => array(2),
+    'access callback' => 'user_access',
+    'access arguments' => array('ignore user'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['ignore_user/remove/%'] = array(
+    'title' => 'Remove from ignore list',
+    'description' => 'Remove user from your ignore list.',
+    'page callback' => 'ignore_user_list_remove_user',
+    'page arguments' => array(2),
+    'access callback' => 'user_access',
+    'access arguments' => array('ignore user'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function ignore_user_theme($existing, $type, $theme, $path) {
+  return array(
+    'ignore_user_ignore_list' => array(
+      'variables' => array('ignored_users' => NULL),
+    ),
+  );
+}
+
+/**
+ * This form allows the user to add/remove other users to/from
+ * their ignored users list.
+ */
+function ignore_user_ignore_list_form($form, &$form_state) {
+  $form['add_user'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Add user to Ignore List'),
+  );
+
+  $form['add_user']['username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username'),
+    '#description' => t('To lookup a username start typing in the box above. A list of usernames will appear as you type.'),
+    '#size' => 40,
+    '#maxlength' => 60,
+    '#autocomplete_path' => 'user/autocomplete',
+  );
+
+  $form['add_user']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Ignore user'),
+  );
+
+  $form['current_list'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Current users on your Ignore List'),
+  );
+
+  $ignored_users = ignore_user_ignored_users();
+  $form['current_list']['ignored_users'] = array(
+    '#markup' => theme('ignore_user_ignore_list', array('ignored_users' => $ignored_users)),
+  );
+
+  return $form;
+}
+
+/**
+ * Theme function to render a user's ignore list as a table.
+ */
+function theme_ignore_user_ignore_list($variables) {
+  $ignored_users = $variables['ignored_users'];
+  $output = '';
+
+  $rows = array();
+  $header = array(t('Username'), t('Operations'));
+  $empty = t('You have not added any users to your Ignore List');
+
+  if (count($ignored_users)) {
+    foreach ($ignored_users as $iuid) {
+      $row = array();
+      $row[] = theme('username', array('account' => user_load($iuid)));
+      $row[] = l(t('remove'), 'ignore_user/remove/'. $iuid);
+      $rows[] = $row;
+    }
+  }
+
+  $pager = theme('pager');
+  $output .= theme('table', array('header' => $header, 'rows' => $rows, 'empty' => $empty)) . $pager;
+
+  return $output;
+}
+
+/**
+ * Ignore list form submit handler
+ */
+function ignore_user_ignore_list_form_submit($form, $form_state) {
+  ignore_user_add_user_username($form_state['values']['username']);
+}
+
+/**
+ * Implements hook_user_delete().
+ */
+function ignore_user_user_delete(&$account) {
+  db_delete('ignore_user')
+    ->condition(db_or()->condition('uid', $account->uid)->condition('iuid', $account->uid))
+    ->execute();
+}
+
+/**
+ * Implements hook_user_view().
+ */
+function ignore_user_user_view($account, $view_mode, $langcode) {
+  global $user;
+
+  if ($user->uid == $account->uid && user_access('ignore user')) {
+    $count = _ignore_user_ignored_users_count();
+    $account->content['ignore_user'] = array(
+      '#type' => 'user_profile_category',
+      '#title' => t('Ignored Users'),
+      '#weight' => 6,
+    );
+    $account->content['ignore_user'][] = array(
+      '#type' => 'user_profile_item',
+      '#title' => t('You have @count on your ignore list', array('@count' => format_plural($count, '1 user', '@count users'))),
+      '#markup' => l(t('View your ignored users'), 'ignore_user/list', array('title' => t('View your list of ignored users'))),
+      '#attributes' => array('class' => 'ignore-user'),
+    );
+  }
+
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function ignore_user_node_view($node, $view_mode, $langcode) {
+  global $user;
+
+  if (!$user || !$user->uid) {
+    return;
+  }
+
+  static $ignored;
+  $links = array();
+
+  if ($user->uid != $node->uid && $node->uid != 0 && user_access('ignore user')) {
+    if (!isset($ignored[$node->uid])) {
+      $ignored[$node->uid] = db_query('SELECT uid FROM {ignore_user} WHERE uid = :uid AND iuid = :iuid', array(':uid' => $user->uid, ':iuid' => $node->uid))->fetchField();
+    }
+    if (!$ignored[$node->uid]) {
+      $links['ignore_user'] = array(
+        'title' => t('ignore user'),
+        'href' => 'ignore_user/add/' . $node->uid,
+        'query' => array('destination' => $_GET['q']),
+        'attributes' => array(
+          'class' => 'ignore-user',
+          'title' => t('Add user to your ignore list'),
+        ),
+      );
+      $node->content['links']['ignore_user'] = array(
+        '#theme' => 'links',
+        '#links' => $links,
+        '#attributes' => array('class' => array('links', 'inline')),
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_comment_view().
+ */
+function ignore_user_comment_view($comment, $view_mode, $langcode) {
+  global $user;
+
+  if (!$user || !$user->uid) {
+    return;
+  }
+
+  static $ignored;
+  $links = array();
+
+  if ($user->uid != $comment->uid && $comment->uid != 0 && user_access('ignore user')) {
+    if (!isset($ignored[$comment->uid])) {
+      $ignored[$comment->uid] = db_query('SELECT uid FROM {ignore_user} WHERE uid = :uid AND iuid = :iuid', array(':uid' => $user->uid, ':iuid' => $comment->uid))->fetchField();
+    }
+    if (!$ignored[$comment->uid]) {
+      $links['ignore_user'] = array(
+        'title' => t('ignore user'),
+        'href' => 'ignore_user/add/' . $comment->uid,
+        'query' => array('destination' => $_GET['q']),
+        'attributes' => array(
+          'class' => 'ignore-user',
+          'title' => t('Add user to your ignore list'),
+        ),
+      );
+      $comment->content['links']['ignore_user'] = array(
+        '#theme' => 'links',
+        '#links' => $links,
+        '#attributes' => array('class' => array('links', 'inline')),
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_node_view_alter().
+ */
+function ignore_user_node_view_alter(&$build) {
+  global $user;
+  static $authors;
+  $node = $build['#node'];
+
+  if (!$user || !$user->uid || !$node->uid) {
+    return;
+  }
+
+  if (_ignore_user_ignored_user($node->uid)) {
+    if (!$authors[$node->uid]) {
+      $authors[$node->uid] = user_load($node->uid);
+    }
+    $output = '<div class="ignore-user-container">' . t('!username is on your <a href="!ignore_list">ignore list</a>. Click <a href="!node" class="ignore-user-content-link">here</a> to view this post.', array('!username' => theme('username', array('account' => $authors[$node->uid])), '!ignore_list' => url('ignore_user/list'), '!node' => url('node/' . $node->nid)));
+    $output .= '<div class="ignore-user-content">' . $build['body'][0]['#markup'] . '</div></div>';
+    $build['body'][0]['#markup'] = $output;
+  }
+
+}
+
+/**
+ * Implements hook_comment().
+ */
+function ignore_user_comment($comment, $op) {
+  global $user;
+  static $authors;
+
+  if (!$user || !$user->uid || !$comment->uid) {
+    return;
+  }
+
+  switch ($op) {
+    case 'view':
+      if (_ignore_user_ignored_user($comment->uid)) {
+        if (!$authors[$comment->uid]) {
+          $authors[$comment->uid] = user_load($comment->uid);
+        }
+        $output = '<div class="ignore-user-container">' . t('!username is on your <a href="!ignore_list">ignore list</a>. Click <a href="!comment" class="ignore-user-content-link">here</a> to view this post.', array('!username' => theme('username', $authors[$comment->uid]), '!ignore_list' => url('ignore_user/list'), '!comment' => url('node/' . $comment->nid . '#comment-' . $comment->cid)));
+        $output .= '<div class="ignore-user-content">' . $comment->comment . '</div></div>';
+        $comment->comment = $output;
+      }
+      break;
+  }
+}
+
+/**
+ * Page callback for link that adds another user to user's ignore list by username
+ */
+function ignore_user_add_user_username($name = NULL) {
+  global $user;
+
+  if (isset($name)) {
+    $iuid = db_query("SELECT uid FROM {users} WHERE name = :name", array(':name' => $name))->fetchField();
+
+    if ($user->uid == $iuid) {
+      drupal_set_message(t("You can't add yourself to your own ignore list"));
+      drupal_goto('ignore_user/list');
+    }
+
+    if (ignore_user_add_user($iuid)) {
+      $ignored_user = user_load($iuid);
+      drupal_set_message(t('!username has been added to your ignore list', array('!username' => theme('username', array('account' => $ignored_user)))));
+    }
+  }
+}
+
+/**
+ * Page callback for link that adds another user to user's ignore list. 
+ */
+function ignore_user_list_add_user($iuid = NULL) {
+  global $user;
+
+  if ($user->uid == $iuid) {
+    drupal_set_message(t("You can't add yourself to your own ignore list"));
+    drupal_goto('ignore_user/list');
+  }
+
+  if (ignore_user_add_user($iuid)) {
+    $ignored_user = user_load($iuid);
+    drupal_set_message(t('!username has been added to your ignore list', array('!username' => theme('username', array('account' => $ignored_user)))));
+  }
+
+  drupal_goto();
+}
+
+/**
+ * Page callback for link that removes another user from user's ignore list. 
+ */
+function ignore_user_list_remove_user($iuid = NULL) {
+  global $user;
+
+  if (ignore_user_remove_user($iuid)) {
+    $ignored_user = user_load($iuid);
+    drupal_set_message(t('!username has been removed from your ignore list', array('!username' => theme('username', array('account' => $ignored_user)))));
+  }
+
+  drupal_goto('ignore_user/list');
+}
+
+/**
+ * API function to add another user to a user's ignore list.
+ */
+function ignore_user_add_user($iuid = NULL) {
+  global $user;
+
+  if (is_numeric($iuid) && $iuid > 0) {
+    db_merge('ignore_user')
+      ->key(array('uid' => $user->uid, 'iuid' => $iuid))
+      ->fields(array(
+          'uid' => $user->uid,
+          'iuid' => $iuid,
+        ))
+      ->execute();
+
+    // Allow hook to act on adding user to ignore list
+    module_invoke_all('ignore_user', 'add to ignore list', $user->uid, $iuid);
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * API function to remove another user from a user's ignore list.
+ */
+function ignore_user_remove_user($iuid = NULL) {
+  global $user;
+
+  $num_deleted = db_delete('ignore_user')
+    ->condition('uid', $user->uid)
+    ->condition('iuid', $iuid)
+    ->execute();
+
+  if ($num_deleted > 0) {
+    // Allow hook to act on removing user from ignore list
+    module_invoke_all('ignore_user', 'remove from ignore list', $user->uid, $iuid);
+    return TRUE;
+  }
+  
+  return FALSE;
+}
+
+/**
+ * API function to check if a specified user is on user's ignore list
+ */
+function _ignore_user_ignored_user($iuid) {
+  global $user;
+  //static $users;
+
+  if (db_query('SELECT uid FROM {ignore_user} WHERE uid = :uid AND iuid = :iuid', array(':uid' => $user->uid, ':iuid' => $iuid))->fetchField()) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Return paged list of ignored users for a given user.
+ */
+function ignore_user_ignored_users() {
+  global $user;
+  $ignored_users = array();
+
+  $query = db_select('ignore_user', 'iu')->extend('PagerDefault')->limit(10);
+  $query->fields('iu', array('iuid'));
+  $query->condition('iu.uid', $user->uid);
+
+  $result = $query->execute();
+  foreach ($result as $row) {
+    $ignored_users[] = $row->iuid;
+  }
+
+  return $ignored_users;
+}
+
+/**
+ * Return count of ignored users for a given user.
+ */
+function _ignore_user_ignored_users_count() {
+  global $user;
+
+  $count = db_query('SELECT COUNT(*) AS count FROM {ignore_user} WHERE uid = :uid', array(':uid' => $user->uid))->fetchField();
+
+  return $count;
+}

@@ -1,0 +1,30 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Ignore User module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function ignore_user_schema() {
+  $schema['ignore_user'] = array(
+    'description' => 'The {ignore_user} table stores user ids of users and other users that they have chosen to ignore.',
+    'fields' => array(
+      'uid' => array(
+        'description' => 'The user ID of the user choosing to ignore another user.',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'iuid' => array(
+        'description' => 'The user ID of the user being ignored by another user.',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('uid', 'iuid'),
+  );
+
+  return $schema;
+}

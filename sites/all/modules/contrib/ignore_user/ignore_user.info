@@ -1,0 +1,13 @@
+name = Ignore User
+description = "Allow users to ignore content from other users."
+core = 7.x
+files[] = ignore_user.module
+files[] = ignore_user.install
+files[] = ignore_user.js
+
+; Information added by drupal.org packaging script on 2013-09-30
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "ignore_user"
+datestamp = "1380582635"
+
