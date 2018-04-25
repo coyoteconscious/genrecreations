@@ -1,0 +1,49 @@
+<?php
+/**
+ * Implements hook_user_view().
+ */
+function gctweaks_user_view($account, $view_mode) {
+  if (module_exists('statuses')) {
+    if (variable_get('statuses_profile', 1) && $view_mode == 'full') {
+      $value = theme('statuses_form_display', array('recipient' => $account, 'type' => 'user'));
+      // Don't show this section if there's nothing there or the user doesn't have permission to see it.
+      if (empty($value)) {
+        return;
+      }
+      if (!isset($account->content['statuses'])) {
+        $account->content['statuses'] = array();
+      }
+
+      $account->content['statuses'] = array(
+        '#type' => 'user_profile_category',
+        '#attributes' => array('class' => array('statuses-profile-category')),
+        '#weight' => -5,
+        '#title' => t('Status Messages'),
+      );
+
+      $account->content['statuses']['status'] = array(
+        '#type' => 'user_profile_item',
+        '#title' => '',
+        '#markup' => $value,
+        '#attributes' => array('class' => array('statuses profile')),
+      );
+
+    }
+  }
+}
+
+
+function gctweaks_form_user_profile_form_alter(&$form, &$form_state, $form_id){
+  if (!user_access('administer_member_group_field')) {
+    $form['field_member_group']['#access'] = false;
+  }
+}
+
+function gctweaks_permissions() {
+  return array(
+    'administer_member_group_field' => array(
+      'title' => t('Administer Member Group Field'),
+      'description' => t('Edit the hidden member group field on member profiles.'),
+    ),
+  );
+}

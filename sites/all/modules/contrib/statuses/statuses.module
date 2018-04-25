@@ -134,11 +134,11 @@ function statuses_menu() {
     'type' => MENU_CALLBACK,
   );
   $items['statuses/ajax'] = array(
-    'title' => 'AHAH callback', 
-    'page callback' => 'statuses_ajax_form_callback', 
-    'delivery callback' => 'ajax_deliver', 
-    'access callback' => TRUE, 
-    'theme callback' => 'ajax_base_page_theme', 
+    'title' => 'AHAH callback',
+    'page callback' => 'statuses_ajax_form_callback',
+    'delivery callback' => 'ajax_deliver',
+    'access callback' => TRUE,
+    'theme callback' => 'ajax_base_page_theme',
     'type' => MENU_CALLBACK,
     'file' => 'includes/utility/statuses.form.inc',
   );
@@ -347,7 +347,7 @@ function statuses_user_view($account, $view_mode) {
       '#type' => 'user_profile_category',
       '#attributes' => array('class' => array('statuses-profile-category')),
       '#weight' => -5,
-      '#title' => t('Messages'),
+      '#title' => t('Status Messages'),
     );
     $account->content['statuses']['status'] = array(
       '#type' => 'user_profile_item',

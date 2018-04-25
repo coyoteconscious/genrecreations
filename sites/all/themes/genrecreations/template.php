@@ -62,6 +62,9 @@ function genrecreations_process_page(&$vars) {
   if (module_exists('color')) {
     _color_page_alter($vars);
   }
+  if (arg(0)=="user" || arg(0)=="users" ){
+    unset ($vars['page']['content']['system_main']['user_picture']);
+  }
 }
 
 /**
@@ -109,5 +112,34 @@ function genrecreations_process_region(&$vars) {
   // Add the click handle inside region menu bar
   if ($vars['region'] === 'menu_bar') {
     $vars['inner_prefix'] = '<h2 class="menu-toggle"><a href="#">' . t('Menu') . '</a></h2>';
+  }
+}
+
+/**
+ * Implements hook_user_view().
+ */
+function genrecreations_user_view($account, $view_mode) {
+die();
+  if (variable_get('statuses_profile', 1) && $view_mode == 'full') {
+    $value = theme('statuses_form_display', array('recipient' => $account, 'type' => 'user'));
+    // Don't show this section if there's nothing there or the user doesn't have permission to see it.
+    if (empty($value)) {
+      return;
+    }
+    if (!isset($account->content['statuses'])) {
+      $account->content['statuses'] = array();
+    }
+    $account->content['statuses'] += array(
+      '#type' => 'user_profile_category',
+      '#attributes' => array('class' => array('statuses-profile-category')),
+      '#weight' => -5,
+      '#title' => t('Status Messages'),
+    );
+    $account->content['statuses']['status'] = array(
+      '#type' => 'user_profile_item',
+      '#title' => '',
+      '#markup' => $value,
+      '#attributes' => array('class' => array('statuses profile')),
+    );
   }
 }
