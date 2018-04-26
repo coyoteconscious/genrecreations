@@ -1,0 +1,56 @@
+diff --git a/collapsiblock.js b/collapsiblock.js
+index 29af8fe..475f508 100644
+--- a/collapsiblock.js
++++ b/collapsiblock.js
+@@ -9,6 +9,7 @@
+       var cookieData = Drupal.Collapsiblock.getCookieData();
+       var slidetype = settings.collapsiblock.slide_type;
+       var defaultState = settings.collapsiblock.default_state;
++      var activePages = settings.collapsiblock.active_pages;
+       var slidespeed = parseInt(settings.collapsiblock.slide_speed,10);
+       var title = settings.collapsiblock.block_title;
+       var block = settings.collapsiblock.block;
+@@ -79,8 +80,8 @@
+           $('a[role=link]', titleElt).click(function (e) {
+             e.preventDefault();
+           });
+-          // Leave active blocks uncollapsed. If the block is expanded, do nothing.
+-          if (stat ==  4 || (cookieData[id] == 0 || (stat == 3 && cookieData[id] == undefined)) && !$(this).find('a.active').size()) {
++          // Leave active blocks if Remember collapsed uncollapsed is false. If the block is expanded, do nothing.
++          if (stat ==  4 || (cookieData[id] == 0 || (stat == 3 && cookieData[id] == undefined)) && (!$(this).find('a.active').size() || activePages === 1)) {
+             // Allow block content to assign class 'collapsiblock-force-open' to it's content to force
+             // itself to stay open. E.g. useful if block contains a form that was just ajaxly updated and should be visible
+             if (titleElt.target.hasClass('collapsiblock-force-open') || titleElt.target.find('.collapsiblock-force-open').size() > 0) {
+diff --git a/collapsiblock.module b/collapsiblock.module
+index b964247..905ad76 100644
+--- a/collapsiblock.module
++++ b/collapsiblock.module
+@@ -12,7 +12,6 @@ function collapsiblock_init() {
+     //load the settings
+     global $theme;
+     $current_theme = $theme ? $theme : variable_get('theme_default', 'bartik');
+-    $collapsiblock_path = drupal_get_path('module', 'collapsiblock');
+     $theme_settings = variable_get(str_replace('/', '_', 'theme_' . $current_theme . '_settings'), array());
+     $theme_settings = array_merge(collapsiblock_default_settings(), $theme_settings, array());
+     drupal_add_library('system', 'jquery.cookie');
+@@ -20,6 +19,7 @@ function collapsiblock_init() {
+         'collapsiblock' => array(
+             'blocks' => array_change_key_case(variable_get('collapsiblock_settings', array()), CASE_LOWER),
+             'default_state' => variable_get('collapsiblock_default_state', 1),
++            'active_pages' => variable_get('collapsiblock_active_pages', FALSE),
+             'slide_type' => variable_get('collapsiblock_slide_type', 1),
+             'slide_speed' => variable_get('collapsiblock_slide_speed', 200),
+             'block_title' => $theme_settings['collapsiblock_title'],
+@@ -57,6 +57,12 @@ function collapsiblock_admin_settings($form, &$form_state) {
+     '#options' => array(1 => t('None.'), 2 => t('Collapsible, expanded by default.'), 3 => t('Collapsible, collapsed by default.'), 4 => t('Collapsible, collapsed all the time.')),
+     '#default_value' => variable_get('collapsiblock_default_state', 1),
+   );
++  $form['collapsiblock_active_pages'] = array(
++    '#type' => 'checkbox',
++    '#title' => t('Remember collapsed state on active pages'),
++    '#default_value' => variable_get('collapsiblock_active_pages', FALSE),
++    '#description' => t('Block can collapse even if it contains an active link.'),
++  );
+   $form['collapsiblock_slide_type'] = array(
+     '#type' => 'radios',
+     '#title' => t('Default animation type'),

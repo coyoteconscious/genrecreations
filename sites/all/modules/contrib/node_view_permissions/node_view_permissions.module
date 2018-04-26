@@ -1,0 +1,215 @@
+<?php
+
+/**
+ * Requirements.
+ */
+require_once 'includes/node_view_permissions.api.inc';
+
+define('NODE_VIEW_PERMISSIONS_GID', 947947);
+define('NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN', 'view own %type content');
+define('NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY', 'view any %type content');
+
+/**
+ * Implements hook_menu().
+ */
+function node_view_permissions_menu() {
+  $items = array();
+
+  $items['admin/config/content/node-view-permissions'] = array(
+    'title' => 'Node view permissions',
+    'description' => t('Adds extra permissions "View own content" and "View any content" for each content type.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('node_view_permissions_settings_page_form'),
+    'file' => 'includes/pages/node_view_permissions.settings.inc',
+    'access arguments' => array('administer site configuration'),
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function node_view_permissions_permission() {
+  $perms = array();
+
+  foreach (node_view_permissions_get_configured_types() as $type) {
+    $own = str_replace('%type', $type, NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN);
+    $any = str_replace('%type', $type, NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY);
+
+    $info = node_type_get_type($type);
+
+    $perms += array(
+      $own => array(
+        'title' => t('%type_name: View own content', array('%type_name' => $info->name)),
+      ),
+      $any => array(
+        'title' => t('%type_name: View any content', array('%type_name' => $info->name)),
+      ),
+    );
+  }
+
+  return $perms;
+}
+
+/**
+ * Implements hook_node_access().
+ */
+function node_view_permissions_node_access($node, $op, $account) {
+  $type = is_string($node) ? $node : $node->type;
+
+  if (node_view_permissions_check_node_type_activation($type)) {
+    if ($op == 'view') {
+      if (user_access('view any ' . $type . ' content', $account) || (user_access('view own ' . $type . ' content', $account) && ($account->uid == $node->uid))) {
+        if (!$node->status && !(user_access('view own unpublished content') && ($account->uid == $node->uid))) {
+          return NODE_ACCESS_DENY;
+        }
+        return NODE_ACCESS_ALLOW;
+      }
+      if (!count(module_implements('node_grants'))) {
+        return NODE_ACCESS_DENY;
+      }
+    }
+  }
+
+  return NODE_ACCESS_IGNORE;
+}
+
+/**
+ * Implements hook_node_access_records().
+ */
+function node_view_permissions_node_access_records($node) {
+  if (!count(module_implements('node_grants'))) {
+    return array();
+  }
+
+  $grants = array();
+
+  if (node_view_permissions_check_node_type_activation($node->type)) {
+    $override = variable_get('node_view_permissions_override', FALSE);
+
+    if ($override and count(module_implements('node_grants'))) {
+      // If the override option is enabled, we add grant records with a high priorty
+      // to supersede other grant permissions
+      $grants[] = array(
+        'realm' => str_replace('%type', $node->type, NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN),
+        'gid' => NODE_VIEW_PERMISSIONS_GID,
+        'grant_view' => 1,
+        'grant_update' => 0,
+        'grant_delete' => 0,
+        'priority' => 0,
+      );
+      $grants[] = array(
+        'realm' => str_replace('%type', $node->type, NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY),
+        'gid' => NODE_VIEW_PERMISSIONS_GID,
+        'grant_view' => 1,
+        'grant_update' => 0,
+        'grant_delete' => 0,
+        'priority' => 0,
+      );
+    }
+    else {
+      $grants[] = array(
+        'realm' => 'all',
+        'gid' => 0,
+        'grant_view' => 0,
+        'grant_update' => 0,
+        'grant_delete' => 0,
+        'priority' => 0,
+      );
+    }
+  }
+
+  return $grants;
+}
+
+/**
+ * Implements hook_node_grants_alter().
+ */
+function node_view_permissions_node_grants_alter(&$grants, $account, $op) {
+  // Add grants as required if the override option is enabled.
+  $override = variable_get('node_view_permissions_override', FALSE);
+
+  if ($override and 'view' == $op and count(module_implements('node_grants'))) {
+    $role_permissions = user_role_permissions($account->roles);
+    $permissions = node_view_permissions_permission();
+
+    foreach ($permissions as $key => $value) {
+      foreach ($role_permissions as $role_id => $perms) {
+        if (TRUE == $perms[$key]) {
+          // User has access to node, adjust grants as needed
+          // Since the permission matches the realm, we key on that.
+          $grants[$key] = array(NODE_VIEW_PERMISSIONS_GID);
+
+          // We've found the permission, move onto the next
+          continue 2;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ */
+function node_view_permissions_query_node_access_alter(QueryAlterableInterface$query) {
+  global $user;
+  // Read meta-data from query, if provided.
+  if (!$account = $query->getMetaData('account')) {
+    $account = $user;
+  }
+  if (!$op = $query->getMetaData('op')) {
+    $op = 'view';
+  }
+
+  // If $account can bypass node access, or there are no node access modules,
+  // or the operation is 'view' and the $acount has a global view grant (i.e.,
+  // a view grant for node ID 0), we don't need to alter the query.
+  if (user_access('bypass node access', $account)) {
+    return;
+  }
+
+  //if viewing the node, deny access if the type is a configured type and no node grants allow access
+  if ($op == 'view') {
+    $tables = $query->getTables();
+    // @see _node_query_node_access_alter().
+    $node_table_alias = FALSE;
+    foreach ($tables as $alias => $table) {
+      if ($table['table'] == 'node') {
+        $node_table_alias = $alias;
+        break;
+      }
+    }
+    
+    if (!$node_table_alias) {
+      //The array internal pointer should be reset before getting the first key bacause it can be NULL here.
+      reset($tables);
+      // If the query has 'node_access' meta tag, we can assume that there should be a nid field.
+      $query->join('node', 'n', 'n.nid = ' . key($tables) . '.nid');
+      $node_table_alias = 'n';
+    }
+    
+    if ($node_table_alias) {
+      $alias = $node_table_alias;
+      foreach (node_view_permissions_get_configured_types() as $type) {
+        if (user_access('view any ' . $type . ' content', $account)) {
+          //user can view any of these nodes, don't worry about altering the query
+          continue;
+        }
+        if (user_access('view own ' . $type . ' content', $account)) {
+          //user can view their own type of this node, add condition ($account->uid == $node->uid) to db query
+          $or = db_or();
+          $or->condition("$alias.type", $type, '<>');
+          $or->condition("$alias.uid", $account->uid, '=');
+          $query->condition($or);
+          continue;
+        }
+        if (!count(module_implements('node_grants'))) {
+          //user doesn't have access permissions on this type, set a condtion that prevents this type from being seen
+          $query->condition("$alias.type", $type, '<>');
+        }
+      }
+    }
+  }
+}
+

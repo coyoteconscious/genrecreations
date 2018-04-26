@@ -1,0 +1,24 @@
+<?php
+
+/**
+ * Implements hook_uninstall(). 
+ */
+function node_view_permissions_uninstall() {
+  // Remove variables for all node types, which are set by our module.
+  $query = db_delete('variable');
+  $query->condition('name', 'node_view_permissions_%', 'LIKE');
+  $query->execute();
+  
+  if (count(module_implements('node_grants'))) {
+    node_access_needs_rebuild(TRUE);
+  }
+}
+
+/**
+ * Implements hook_update_N().
+ *
+ * Require rebuild of node permissions
+ */
+function node_view_permissions_update_7100(&$sandbox) {
+  node_access_needs_rebuild(TRUE);
+}

@@ -1,4 +1,48 @@
 <?php
+function gctweaks_menu(){
+  $items['member-group'] = array(
+    'title' => 'Your Space',
+    'page callback' => 'gctweaks_member_group_page',
+    'access callback' => TRUE,
+    'menu_name' => 'navigation',
+  );
+  return $items;
+}
+
+/*
+// Normally, I remove unused stuff like this, but I may want to turn it
+// back on, based on user feedback.
+function gctweaks_group_menu_title() {
+  global $user;
+  $query = "SELECT g.title
+    FROM users u
+    JOIN field_data_field_member_group mg ON mg.entity_id=u.uid
+    JOIN groups g ON g.gid=mg.field_member_group_target_id
+    WHERE u.uid=:uid";
+
+  $result = db_query($query, array(':uid'=>$user->uid));
+  $group_title = $result->fetchField();
+
+  return t($group_title);
+}
+*/
+
+function gctweaks_member_group_page() {
+  global $user;
+  $query = "SELECT g.gid
+    FROM users u
+    JOIN field_data_field_member_group mg ON mg.entity_id=u.uid
+    JOIN groups g ON g.gid=mg.field_member_group_target_id
+    WHERE u.uid=:uid";
+  $result = db_query($query, array(':uid'=>$user->uid));
+  $gid = $result->fetchField();
+  if (empty($gid)) {
+    drupal_goto('user');
+  }
+  $path = drupal_get_path_alias('group/'.$gid);
+  drupal_goto($path);
+}
+
 /**
  * Implements hook_user_view().
  */
@@ -97,38 +141,67 @@ function _gctweaks_show_content_block() {
 
 
 function gctweaks_menu_breadcrumb_alter(&$active_trail, $item) {
-  if (arg(0) != 'group') {
-    return;
+  global $user;
+  if (arg(0)=='node') {
+    $node = $item['page_arguments']['0'];
+    if (isset($node->group)) {
+      $gid = $node->group;
+    }
   }
 
-  $query = "SELECT uid, name FROM {users} u
-    JOIN {field_data_field_member_group} g
-    ON g.entity_id=u.uid
-    WHERE g.field_member_group_target_id=:gid";
-  $result = db_query($query, array(':gid'=>arg(1)));
-  $userdata = $result->fetchAssoc();
-  $group_owner_id = $userdata['uid'];
-  $group_owner_name = $userdata['name'];
+  if (arg(0) == 'group' && arg(1)) {
+    $gid = arg(1);
+  }
 
-  $path = drupal_get_path_alias('user/'.$group_owner_id);
+  if (!empty($gid)) {
+    $query = "SELECT u.uid, u.name, g.title
+      FROM users u
+      JOIN field_data_field_member_group mg ON mg.entity_id=u.uid
+      JOIN groups g ON g.gid=mg.field_member_group_target_id
+      WHERE mg.field_member_group_target_id=:gid";
 
-  $first = $active_trail['0'];
-  unset ($active_trail['0']);
-  $the_rest = $active_trail;
+    $result = db_query($query, array(':gid'=>$gid));
+    $userdata = $result->fetchAssoc();
+    $group_owner_id = $userdata['uid'];
+    $group_owner_name = $userdata['name'];
+    $group_title = $userdata['title'];
 
-  $member_group_owner = array(
-    'title' => $group_owner_name,
-    'href' => $path,
-    'link_path' => $path,
-    'localized_options' => array(),
-    'type' => 0
-  );
-  $active_trail =array();
-  $active_trail[] = $first;
-  $active_trail[] = $member_group_owner;
-  $active_trail += $the_rest;
+    $path = drupal_get_path_alias('user/'.$group_owner_id);
+    $group_path  = drupal_get_path_alias('group/'.$gid);
 
+    $member_user_breadcrumb = array(
+      'title' => $group_owner_name,
+      'href' => $path,
+      'link_path' => $path,
+      'localized_options' => array(),
+      'type' => 0
+    );
+
+    $first = $active_trail['0'];
+    unset ($active_trail['0']);
+    $the_rest = $active_trail;
+    $active_trail =array();
+    $active_trail[] = $first;
+    $active_trail[] = $member_user_breadcrumb;
+
+    if (arg(0)=='node' && !empty($gid)) {
+      $member_group_breadcrumb = array(
+        'title' => $group_title,
+        'href' => $group_path,
+        'link_path' => $group_path,
+        'localized_options' => array(),
+        'type' => 0
+      );
+      $active_trail[] = $member_group_breadcrumb;
+    }
+    $active_trail += $the_rest;
+  }
 }
+
+function _gctweaks_group_user_breadcrumb_from_fid($gid) {
+    return $member_group_breadcrumb;
+}
+
 
 function gctweaks_preprocess_user_picture(&$variables) {
   $variables['user_picture'] = '';
@@ -192,3 +265,4 @@ function gctweaks_preprocess_user_picture(&$variables) {
   }
 
 }
+

@@ -1,0 +1,186 @@
+diff --git a/includes/pages/node_view_permissions.settings.inc b/includes/pages/node_view_permissions.settings.inc
+index ac3060b..1784a67 100644
+--- a/includes/pages/node_view_permissions.settings.inc
++++ b/includes/pages/node_view_permissions.settings.inc
+@@ -13,8 +13,28 @@ function node_view_permissions_settings_page_form($form, &$form_state) {
+       '#type' => 'checkbox',
+       '#title' => $info->name,
+       '#default_value' => node_view_permissions_check_node_type_activation($type),
++      '#access' => user_access('administer site configuration'),
+     );
+   }
++
++  $form['node_grants'] = array(
++    '#type' => 'fieldset',
++    '#title' => t('Node Grants'),
++    '#description' => t('Additinal options when node grants are in use.'),
++    '#collapsible' => TRUE,
++    '#collapsed' => TRUE,
++    '#access' => user_access('administer site configuration'),
++    '#disabled' => !(bool)count(module_implements('node_grants')),
++  );
++
++  $form['node_grants']['node_view_permissions_override'] = array(
++    '#type' => 'checkbox',
++    '#title' => t('Override node grants by other modules'),
++    '#description' => t('When used in conjunction with modules implementing node grants, do you want this module\'s permissions to override the others.'),
++    '#default_value' => isset($form_state['values']['node_view_permissions_override']) ? $form_state['values']['node_view_permissions_override'] : variable_get('node_view_permissions_override', FALSE),
++    '#disabled' => !(bool)count(module_implements('node_grants')),
++  );
++    
+   $form = system_settings_form($form);
+   $form['#submit'][] = 'node_view_permissions_settings_page_form_submit';
+   return $form;
+diff --git a/node_view_permissions.install b/node_view_permissions.install
+index f33580e..b0568bb 100644
+--- a/node_view_permissions.install
++++ b/node_view_permissions.install
+@@ -13,3 +13,12 @@ function node_view_permissions_uninstall() {
+     node_access_needs_rebuild(TRUE);
+   }
+ }
++
++/**
++ * Implements hook_update_N().
++ *
++ * Require rebuild of node permissions
++ */
++function node_view_permissions_update_7100(&$sandbox) {
++  node_access_needs_rebuild(TRUE);
++}
+\ No newline at end of file
+diff --git a/node_view_permissions.module b/node_view_permissions.module
+index f4d8fd5..77cd708 100644
+--- a/node_view_permissions.module
++++ b/node_view_permissions.module
+@@ -5,6 +5,10 @@
+  */
+ require_once 'includes/node_view_permissions.api.inc';
+ 
++define('NODE_VIEW_PERMISSIONS_GID', 947947);
++define('NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN', 'view own %type content');
++define('NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY', 'view any %type content');
++
+ /**
+  * Implements hook_menu().
+  */
+@@ -30,13 +34,16 @@ function node_view_permissions_permission() {
+   $perms = array();
+ 
+   foreach (node_view_permissions_get_configured_types() as $type) {
++    $own = str_replace('%type', $type, NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN);
++    $any = str_replace('%type', $type, NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY);
++
+     $info = node_type_get_type($type);
+ 
+     $perms += array(
+-      "view own $type content" => array(
++      $own => array(
+         'title' => t('%type_name: View own content', array('%type_name' => $info->name)),
+       ),
+-      "view any $type content" => array(
++      $any => array(
+         'title' => t('%type_name: View any content', array('%type_name' => $info->name)),
+       ),
+     );
+@@ -56,7 +63,7 @@ function node_view_permissions_node_access($node, $op, $account) {
+       if (user_access('view any ' . $type . ' content', $account) || (user_access('view own ' . $type . ' content', $account) && ($account->uid == $node->uid))) {
+         if (!$node->status && !user_access('view own unpublished content')) {
+           return NODE_ACCESS_DENY;
+-        } 
++        }
+         return NODE_ACCESS_ALLOW;
+       }
+       if (!count(module_implements('node_grants'))) {
+@@ -79,24 +86,74 @@ function node_view_permissions_node_access_records($node) {
+   $grants = array();
+ 
+   if (node_view_permissions_check_node_type_activation($node->type)) {
+-    $grants[] = array(
+-      'realm' => 'all',
+-      'gid' => 0,
+-      'grant_view' => 0,
+-      'grant_update' => 0,
+-      'grant_delete' => 0,
+-      'priority' => 0,
+-    );
++    $override = variable_get('node_view_permissions_override', FALSE);
++
++    if ($override and count(module_implements('node_grants'))) {
++      // If the override option is enabled, we add grant records with a high priorty
++      // to supersede other grant permissions
++      $grants[] = array(
++        'realm' => str_replace('%type', $node->type, NODE_VIEW_PERMISSIONS_REALM_VIEW_OWN),
++        'gid' => NODE_VIEW_PERMISSIONS_GID,
++        'grant_view' => 1,
++        'grant_update' => 0,
++        'grant_delete' => 0,
++        'priority' => 0,
++      );
++      $grants[] = array(
++        'realm' => str_replace('%type', $node->type, NODE_VIEW_PERMISSIONS_REALM_VIEW_ANY),
++        'gid' => NODE_VIEW_PERMISSIONS_GID,
++        'grant_view' => 1,
++        'grant_update' => 0,
++        'grant_delete' => 0,
++        'priority' => 0,
++      );
++    }
++    else {
++      $grants[] = array(
++        'realm' => 'all',
++        'gid' => 0,
++        'grant_view' => 0,
++        'grant_update' => 0,
++        'grant_delete' => 0,
++        'priority' => 0,
++      );
++    }
+   }
+ 
+   return $grants;
+ }
+ 
+ /**
++ * Implements hook_node_grants_alter().
++ */
++function node_view_permissions_node_grants_alter(&$grants, $account, $op) {
++  // Add grants as required if the override option is enabled.
++  $override = variable_get('node_view_permissions_override', FALSE);
++
++  if ($override and 'view' == $op and count(module_implements('node_grants'))) {
++    $role_permissions = user_role_permissions($account->roles);
++    $permissions = node_view_permissions_permission();
++
++    foreach ($permissions as $key => $value) {
++      foreach ($role_permissions as $role_id => $perms) {
++        if (TRUE == $perms[$key]) {
++          // User has access to node, adjust grants as needed
++          // Since the permission matches the realm, we key on that.
++          $grants[$key] = array(NODE_VIEW_PERMISSIONS_GID);
++
++          // We've found the permission, move onto the next
++          continue 2;
++        }
++      }
++    }
++  }
++}
++
++/**
+  * Implements hook_query_TAG_alter().
+  */
+-function node_view_permissions_query_node_access_alter(QueryAlterableInterface $query) {
+-   global $user;
++function node_view_permissions_query_node_access_alter(QueryAlterableInterface$query) {
++  global $user;
+   // Read meta-data from query, if provided.
+   if (!$account = $query->getMetaData('account')) {
+     $account = $user;
+@@ -145,5 +202,5 @@ function node_view_permissions_query_node_access_alter(QueryAlterableInterface $
+       }
+     }
+   }
+-
+ }
++

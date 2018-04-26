@@ -80,3 +80,17 @@
 .ie6-7 #search-form input.form-submit:focus {
   background-position: center -25px;
 }
+
+.region-top-menu #block-search-form {
+    float: right;
+    right: -30px;
+    top: 4px;
+}
+
+.region-top-menu #block-search-form #edit-submit {
+    background-origin: content-box;
+    top: 4px;
+    display: inline-block;
+    position: relative;
+}
+
