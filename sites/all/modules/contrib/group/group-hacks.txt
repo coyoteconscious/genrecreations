@@ -1,0 +1,1 @@
+Altered group.group.inc to prevent multiple forms for signing up for groups.

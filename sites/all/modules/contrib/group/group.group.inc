@@ -421,6 +421,13 @@ function group_user_join(Group $group, $account) {
  *   Whether the user can join the group.
  */
 function group_user_can_join_form(Group $group, $account, $group_membership) {
+  // CO: Update, to ensure that form version takes priority for admins.
+  // Probably, the best way to deal with this is to make a separate override
+  // module.
+  // TODO: Make proper override, rather than hacking module.
+  if (group_access('join group', $group, $account)) {
+    return;
+  }
   return empty($group_membership) && group_access('join group form', $group, $account);
 }
 
@@ -480,6 +487,13 @@ function group_user_request_membership(Group $group, $account) {
  *   Whether the user can request a membership for the group.
  */
 function group_user_can_request_membership_form(Group $group, $account, $group_membership) {
+  // CO: Update, to ensure that form version takes priority for admins.
+  // Probably, the best way to deal with this is to make a separate override
+  // module.
+  // TODO: Make proper override, rather than hacking module.
+  if (group_access('request membership', $group, $account)) {
+    return;
+  }
   return empty($group_membership) && group_access('request membership form', $group, $account);
 }
 

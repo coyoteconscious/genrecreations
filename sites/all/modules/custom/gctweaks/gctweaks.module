@@ -32,7 +32,6 @@ function gctweaks_user_view($account, $view_mode) {
   }
 }
 
-
 function gctweaks_form_user_profile_form_alter(&$form, &$form_state, $form_id){
   if (!user_access('administer_member_group_field')) {
     $form['field_member_group']['#access'] = false;
@@ -46,4 +45,150 @@ function gctweaks_permissions() {
       'description' => t('Edit the hidden member group field on member profiles.'),
     ),
   );
+}
+
+function gctweaks_form_node_form_alter(&$form, $form_state) {
+  $node = $form_state['node'];
+
+  $gid = !empty($node->group) ? $node->group : 0;
+  $node_create_access = user_access('create '.$node->type.' content');
+  $can_bypass_access = user_access('bypass group access');
+  // If user has access to globally create a node, or the node already has a group, don't alter the form.
+  if ($gid || $node_create_access || $can_bypass_access) {
+    return;
+  }
+  $member_group_id = _gctweaks_get_user_member_group_id_from_profile($node->uid);
+
+  // Show a select of all the groups the author can create the node in.
+  if (!$can_bypass_access) {
+    $options = array();
+    foreach (group_load_multiple(gnode_group_node_create_gids($node->type)) as $group) {
+      $options[$group->gid] = $group->label() . " (GID: $group->gid)";
+    }
+
+    $form['group_settings']['gid'] = array('#type' => 'value', '#value' => $member_group_id);
+  }
+
+}
+
+function _gctweaks_get_user_member_group_id_from_profile($account=NULL) {
+  global $user;
+  if (!isset($account)) {
+    $account = $user;
+  }
+  else {
+    if (!isset($account->uid) && $account>0) {
+      $account = user_load($account);
+    }
+  }
+  $field_items = field_get_items('user', $account, 'field_member_group');
+  if (isset($field_items[0]['target_id'])) {
+    return $field_items[0]['target_id'];
+  }
+}
+
+// Keeps group view from also showing group block
+function _gctweaks_show_content_block() {
+  if (arg(0)=='group' && arg(1) && !arg(2)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+function gctweaks_menu_breadcrumb_alter(&$active_trail, $item) {
+  if (arg(0) != 'group') {
+    return;
+  }
+
+  $query = "SELECT uid, name FROM {users} u
+    JOIN {field_data_field_member_group} g
+    ON g.entity_id=u.uid
+    WHERE g.field_member_group_target_id=:gid";
+  $result = db_query($query, array(':gid'=>arg(1)));
+  $userdata = $result->fetchAssoc();
+  $group_owner_id = $userdata['uid'];
+  $group_owner_name = $userdata['name'];
+
+  $path = drupal_get_path_alias('user/'.$group_owner_id);
+
+  $first = $active_trail['0'];
+  unset ($active_trail['0']);
+  $the_rest = $active_trail;
+
+  $member_group_owner = array(
+    'title' => $group_owner_name,
+    'href' => $path,
+    'link_path' => $path,
+    'localized_options' => array(),
+    'type' => 0
+  );
+  $active_trail =array();
+  $active_trail[] = $first;
+  $active_trail[] = $member_group_owner;
+  $active_trail += $the_rest;
+
+}
+
+function gctweaks_preprocess_user_picture(&$variables) {
+  $variables['user_picture'] = '';
+    $account = $variables['account'];
+    $field_user_picture = field_get_items('user', $account, 'field_user_picture');
+    $image_field_instance = field_info_instance('user', 'field_user_picture', 'user');
+    $account->picture = $field_user_picture['0']['fid'];
+    $default_image_fid = $image_field_instance['settings']['default_image'];
+    if (empty($account->picture)) {
+      $account->picture =$default_image_fid;
+    }
+
+//print 'field_user_picture<textarea style="height:300px;">'.print_r($field_user_picture, true).'</textarea>';
+//print 'image_field_instance<textarea style="height:300px;">'.print_r($image_field_instance, true).'</textarea>';
+//die();
+  if (!variable_get('user_pictures', 0) && !empty($image_field_instance)) {
+    if (!empty($account->picture)) {
+      if (is_numeric($account->picture)) {
+        $account->picture = file_load($account->picture);
+      }
+      if (!empty($account->picture->uri)) {
+        $filepath = $account->picture->uri;
+      }
+    }
+    elseif (variable_get('user_picture_default', '')) {
+      $filepath = variable_get('user_picture_default', '');
+    }
+
+    if (isset($filepath)) {
+      $alt = t("@user's picture", array(
+        '@user' => format_username($account),
+      ));
+
+      // If the image does not have a valid Drupal scheme (for eg. HTTP),
+      // don't load image styles.
+      if (module_exists('image') && file_valid_uri($filepath) && ($style = variable_get('user_picture_style', ''))) {
+        $variables['user_picture'] = theme('image_style', array(
+          'style_name' => $style,
+          'path' => $filepath,
+          'alt' => $alt,
+          'title' => $alt,
+        ));
+      }
+      else {
+        $variables['user_picture'] = theme('image', array(
+          'path' => $filepath,
+          'alt' => $alt,
+          'title' => $alt,
+        ));
+      }
+      if (!empty($account->uid) && user_access('access user profiles')) {
+        $attributes = array(
+          'attributes' => array(
+            'title' => t('View user profile.'),
+          ),
+          'html' => TRUE,
+        );
+        //$variables['user_picture'] = l($variables['user_picture'], "user/{$account-&gt;<span class="php-function-or-constant property member-of-variable">uid</span>}", $attributes);
+      }
+    }
+  }
+
 }
