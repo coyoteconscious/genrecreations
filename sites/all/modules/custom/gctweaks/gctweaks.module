@@ -217,7 +217,7 @@ function gctweaks_preprocess_user_picture(&$variables) {
 //print 'field_user_picture<textarea style="height:300px;">'.print_r($field_user_picture, true).'</textarea>';
 //print 'image_field_instance<textarea style="height:300px;">'.print_r($image_field_instance, true).'</textarea>';
 //die();
-  if (!variable_get('user_pictures', 0) && !empty($image_field_instance)) {
+  if (!empty($image_field_instance)) {
     if (!empty($account->picture)) {
       if (is_numeric($account->picture)) {
         $account->picture = file_load($account->picture);

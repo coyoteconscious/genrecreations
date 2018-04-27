@@ -1,0 +1,10 @@
+name = Naked GC
+description = Based on the Naked theme in Advanced Forums. Contains GenreCreations-specific tweaks.
+version = 2.x
+
+; Information added by Drupal.org packaging script on 2015-10-26
+version = "7.x-2.6"
+core = "7.x"
+project = "advanced_forum"
+datestamp = "1445848452"
+

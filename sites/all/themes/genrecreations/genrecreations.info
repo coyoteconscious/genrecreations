@@ -451,3 +451,4 @@ version = "7.x-3.1"
 core = "7.x"
 datestamp = "1468238340"
 
+plugins[advanced_forum][styles] = 'forum-styles'
