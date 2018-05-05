@@ -274,3 +274,7 @@ div.messages {
 font-family: FontAwesome;
 content: "\f039";
 }
+
+div.url-textfield {
+  display:none;
+}

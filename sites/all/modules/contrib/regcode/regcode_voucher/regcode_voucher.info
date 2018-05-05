@@ -1,0 +1,15 @@
+name = Voucher system
+description = "Allows registration codes to be used post registration, either on a users account page or via a tab."
+core = 7.x
+package = Registration
+
+dependencies[] = regcode
+
+configure = admin/config/people/regcode/voucher
+
+; Information added by Drupal.org packaging script on 2016-06-19
+version = "7.x-1.5"
+core = "7.x"
+project = "regcode"
+datestamp = "1466371441"
+

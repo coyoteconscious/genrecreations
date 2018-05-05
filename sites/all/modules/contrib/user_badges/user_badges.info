@@ -1,0 +1,15 @@
+name = User Badges
+description = Enables assignment of graphical badges to users and roles.
+core = 7.x
+package = User interface
+version = 7.x-4.0
+
+dependencies[] = entity
+files[] includes/handlers/user_badge_assignment_type.inc
+
+; Information added by Drupal.org packaging script on 2015-02-26
+version = "7.x-4.x-dev"
+core = "7.x"
+project = "user_badges"
+datestamp = "1424938510"
+

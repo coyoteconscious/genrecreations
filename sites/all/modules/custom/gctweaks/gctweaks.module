@@ -82,36 +82,46 @@ function gctweaks_form_user_profile_form_alter(&$form, &$form_state, $form_id){
   }
 }
 
-function gctweaks_permissions() {
+function gctweaks_permission() {
   return array(
     'administer_member_group_field' => array(
       'title' => t('Administer Member Group Field'),
       'description' => t('Edit the hidden member group field on member profiles.'),
     ),
+    'change_issue_status' => array(
+      'title' => t('Change Issue Status'),
+      'description' => t('Change status on issue tracker items (must have edit/admin permission)'),
+    ),
   );
 }
 
 function gctweaks_form_node_form_alter(&$form, $form_state) {
-  $node = $form_state['node'];
 
+  // Group tweaks.
+  $node = $form_state['node'];
   $gid = !empty($node->group) ? $node->group : 0;
   $node_create_access = user_access('create '.$node->type.' content');
   $can_bypass_access = user_access('bypass group access');
   // If user has access to globally create a node, or the node already has a group, don't alter the form.
-  if ($gid || $node_create_access || $can_bypass_access) {
-    return;
-  }
-  $member_group_id = _gctweaks_get_user_member_group_id_from_profile($node->uid);
-
-  // Show a select of all the groups the author can create the node in.
-  if (!$can_bypass_access) {
-    $options = array();
-    foreach (group_load_multiple(gnode_group_node_create_gids($node->type)) as $group) {
-      $options[$group->gid] = $group->label() . " (GID: $group->gid)";
+  if (!$gid && !$node_create_access && !$can_bypass_access) {
+    $member_group_id = _gctweaks_get_user_member_group_id_from_profile($node->uid);
+    // Show a select of all the groups the author can create the node in.
+    if (!$can_bypass_access) {
+      $options = array();
+      foreach (group_load_multiple(gnode_group_node_create_gids($node->type)) as $group) {
+        $options[$group->gid] = $group->label() . " (GID: $group->gid)";
+      }
+      $form['group_settings']['gid'] = array('#type' => 'value', '#value' => $member_group_id);
     }
-
-    $form['group_settings']['gid'] = array('#type' => 'value', '#value' => $member_group_id);
   }
+  // Issue tracker tweaks
+
+  if (!user_access('change_issue_status')) {
+    if (array_key_exists('field_status', $form)) {
+      $form['field_status']['#access'] = FALSE;
+    }
+  }
+
 
 }
 
@@ -142,7 +152,7 @@ function _gctweaks_show_content_block() {
 
 function gctweaks_menu_breadcrumb_alter(&$active_trail, $item) {
   global $user;
-  if (arg(0)=='node') {
+  if (arg(0)=='node' && arg(1)) {
     $node = $item['page_arguments']['0'];
     if (isset($node->group)) {
       $gid = $node->group;
@@ -159,49 +169,70 @@ function gctweaks_menu_breadcrumb_alter(&$active_trail, $item) {
       JOIN field_data_field_member_group mg ON mg.entity_id=u.uid
       JOIN groups g ON g.gid=mg.field_member_group_target_id
       WHERE mg.field_member_group_target_id=:gid";
-
     $result = db_query($query, array(':gid'=>$gid));
     $userdata = $result->fetchAssoc();
-    $group_owner_id = $userdata['uid'];
-    $group_owner_name = $userdata['name'];
-    $group_title = $userdata['title'];
-
-    $path = drupal_get_path_alias('user/'.$group_owner_id);
     $group_path  = drupal_get_path_alias('group/'.$gid);
 
-    $member_user_breadcrumb = array(
-      'title' => $group_owner_name,
-      'href' => $path,
-      'link_path' => $path,
-      'localized_options' => array(),
-      'type' => 0
-    );
+    // If this returns a uid, then the group or node group must belong
+    // to their personal space. No other groups have an attached owner.
+    if (!empty($userdata['uid'])) {
+      $group_owner_id = $userdata['uid'];
+      $group_owner_name = $userdata['name'];
+      $group_title = $userdata['title'];
+      $user_path = drupal_get_path_alias('user/'.$group_owner_id);
 
-    $first = $active_trail['0'];
-    unset ($active_trail['0']);
-    $the_rest = $active_trail;
-    $active_trail =array();
-    $active_trail[] = $first;
-    $active_trail[] = $member_user_breadcrumb;
+      $member_user_breadcrumb = array(
+        'title' => $group_owner_name,
+        'href' => $user_path,
+        'link_path' => $user_path,
+        'localized_options' => array(),
+        'type' => 0
+      );
 
-    if (arg(0)=='node' && !empty($gid)) {
-      $member_group_breadcrumb = array(
-        'title' => $group_title,
+      if (arg(0)=='node' && !empty($gid)) {
+        $member_group_breadcrumb = array(
+          'title' => $group_title,
+          'href' => $group_path,
+          'link_path' => $group_path,
+          'localized_options' => array(),
+          'type' => 0
+        );
+      }
+
+    }
+    else {
+    // Must be some other kind of group.
+      $query = "SELECT gid, type, title FROM groups WHERE gid=:gid";
+      $result = db_query($query, array(':gid'=>$gid));
+      $groupdata = $result->fetchAssoc();
+
+      $group_breadcrumb = array(
+        'title' => $groupdata['title'],
         'href' => $group_path,
         'link_path' => $group_path,
         'localized_options' => array(),
         'type' => 0
       );
+
+    }
+    $active_trail = $active_trail;
+    $last = array_pop($active_trail);
+    if (isset($member_user_breadcrumb)) {
+      $active_trail[] = $member_user_breadcrumb;
+    }
+    if (isset($member_group_breadcrumb)) {
       $active_trail[] = $member_group_breadcrumb;
     }
-    $active_trail += $the_rest;
+    if (isset($group_breadcrumb)) {
+      $active_trail[] = $group_breadcrumb;
+    }
+    $active_trail[] = $last;
   }
 }
 
 function _gctweaks_group_user_breadcrumb_from_fid($gid) {
     return $member_group_breadcrumb;
 }
-
 
 function gctweaks_preprocess_user_picture(&$variables) {
   $variables['user_picture'] = '';
@@ -214,9 +245,6 @@ function gctweaks_preprocess_user_picture(&$variables) {
       $account->picture =$default_image_fid;
     }
 
-//print 'field_user_picture<textarea style="height:300px;">'.print_r($field_user_picture, true).'</textarea>';
-//print 'image_field_instance<textarea style="height:300px;">'.print_r($image_field_instance, true).'</textarea>';
-//die();
   if (!empty($image_field_instance)) {
     if (!empty($account->picture)) {
       if (is_numeric($account->picture)) {

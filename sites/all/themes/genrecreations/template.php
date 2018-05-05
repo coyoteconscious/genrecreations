@@ -119,7 +119,6 @@ function genrecreations_process_region(&$vars) {
  * Implements hook_user_view().
  */
 function genrecreations_user_view($account, $view_mode) {
-die();
   if (variable_get('statuses_profile', 1) && $view_mode == 'full') {
     $value = theme('statuses_form_display', array('recipient' => $account, 'type' => 'user'));
     // Don't show this section if there's nothing there or the user doesn't have permission to see it.
@@ -141,5 +140,54 @@ die();
       '#markup' => $value,
       '#attributes' => array('class' => array('statuses profile')),
     );
+  }
+}
+
+function _genrecreations_field__field_guidelines($variables) {
+  $output = '';
+  // Render the label, if it's not hidden.
+  if (!$variables['label_hidden']) {
+    $output .= '<div class="field-label"' . $variables['title_attributes'] . '>' . $variables['label'] . ':&nbsp;</div>';
+  }
+
+  // Render the items.
+  $output .= '<div class="field-items"' . $variables['content_attributes'] . '>';
+  foreach ($variables['items'] as $delta => $item) {
+    $classes = 'field-item ' . ($delta % 2 ? 'odd' : 'even');
+    $inner_output = '<div class="' . $classes . '"' . $variables['item_attributes'][$delta] . '>' . drupal_render($item) . '</div>';
+    $item_data = reset($item['entity']['paragraphs_item']);
+    //$field_value_subject = field_get_items('paragraphs_item', $item_data['#entity'], 'field_subject');
+    $field_value_subject = magic_field_values('paragraphs_item', $item_data['#entity'], 'field_subject');
+    $output .= _gctweaks_wrap_in_collapsible($inner_output, $field_value_subject['0']['value'], TRUE);
+  }
+  $output .= '</div>';
+
+  // Render the top-level DIV.
+  $output = '<div class="' . $variables['classes'] . '"' . $variables['attributes'] . '>' . $output . '</div>';
+  return $output;
+}
+
+function _gctweaks_wrap_in_collapsible($content, $title='hide/show', $collapsed=false) {
+  if (module_exists('ctools')) {
+    return theme('ctools_collapsible',
+      array(
+        'handle' => $title,
+        'content' => $content,
+        'collapsed' => $collapsed
+      )
+    );
+  }
+}
+
+/* get the values out of a field */
+function magic_field_values($entity_type, $entity, $field_name, $delta = null) {
+  $field_items = field_get_items($entity_type, $entity, $field_name);
+  /* if a delta value is supplied, render that item otherwise, send the lot
+  back. */
+  if (isset($delta)) {
+    return field_view_value($entity_type, $entity, $field_name, $field_items[$delta]);
+  }
+  else {
+    return $field_items;
   }
 }

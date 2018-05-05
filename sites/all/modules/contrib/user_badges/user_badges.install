@@ -1,0 +1,340 @@
+<?php
+
+/**
+ * @file
+ * Install for user_badge module
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function user_badges_schema() {
+  $schema = array();
+
+  $schema['user_badge'] = array(
+    'description' => 'User Badge table for Entity',
+    'fields' => array(
+      'bid' => array(
+        'description' => 'Primary key badge id',
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),
+      'name' => array(
+        'description' => 'Name for user_badge',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'weight' => array(
+        'description' => 'Badge weight for this user',
+        'type' => 'int',
+        'default' => 0,
+      ),
+      'created' => array(
+        'description' => 'Created timestamp',
+        'type' => 'int',
+        'not null' => FALSE,
+      ),
+      'changed' => array(
+        'description' => 'Changed timestamp',
+        'type' => 'int',
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('bid'),
+    'indexes' => array(
+      'name_idx' => array('name'),
+    ),
+  );
+
+  $schema['user_badges_assignment'] = array(
+    'description' => 'Holds information about badge assignments',
+    'fields' => array(
+      'uba_id' => array(
+        'description' => 'Primary key for this table',
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'Foreign key to users table',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'bid' => array(
+        'description' => 'Foreign key to bid',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'weight' => array(
+        'description' => 'Badge weight for this user',
+        'type' => 'int',
+        'default' => 0,
+      ),
+      'type' => array(
+        'description' => 'Assignment type: 1 for user, 2 for role',
+        'type' => 'int',
+        'default' => 1,
+      ),
+    ),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'bid' => array(
+        'table' => 'user_badge',
+        'columns' => array('bid' => 'bid'),
+      ),
+    ),
+    'primary key' => array('uba_id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Return array of field_bases.
+ */
+function user_badges_get_field_bases() {
+  $fields = array();
+
+  $fields['user_badge_image'] = array(
+    'field_name' => 'user_badge_image',
+    'type' => 'image',
+    'module' => 'image',
+    'locked' => FALSE,
+    'entity_types' => array('user_badge'),
+    'cardinality' => 1,
+    'settings' => array(
+      'uri_scheme' => 'public',
+      'default_image' => FALSE,
+    ),
+  );
+
+  $fields['user_badge_badges'] = array(
+    'translatable' => '0',
+    'entity_types' => array(),
+    'settings' => array(
+      'target_type' => 'user_badge',
+      'handler' => 'base',
+      'handler_settings' => array(
+        'target_bundles' => array(),
+        'sort' => array(
+          'type' => 'property',
+          'property' => 'name',
+          'direction' => 'ASC',
+        ),
+        'behaviors' => array(
+          'views-select-list' => array(
+            'status' => 1,
+          ),
+        ),
+      ),
+      'entity_translation_sync' => FALSE,
+    ),
+    'foreign keys' => array(
+      'user_badge' => array(
+        'table' => 'user_badge',
+        'columns' => array(
+          'target_id' => 'bid',
+        ),
+      ),
+    ),
+    'indexes' => array(
+      'target_id' => array(
+        0 => 'target_id',
+      ),
+    ),
+    'storage' => array(
+      'type' => 'field_sql_storage',
+      'settings' => array(),
+      'module' => 'field_sql_storage',
+      'active' => '1',
+      'details' => array(
+        'sql' => array(
+          'FIELD_LOAD_CURRENT' => array(
+            'field_data_user_badge_badges' => array(
+              'target_id' => 'user_badge_badges_target_id',
+            ),
+          ),
+          'FIELD_LOAD_REVISION' => array(
+            'field_revision_user_badge_badges' => array(
+              'target_id' => 'user_badge_badges_target_id',
+            ),
+          ),
+        ),
+      ),
+    ),
+    'field_name' => 'user_badge_badges',
+    'type' => 'entityreference',
+    'module' => 'entityreference',
+    'active' => '1',
+    'locked' => '0',
+    'cardinality' => '-1',
+    'deleted' => '0',
+    'columns' => array(
+      'target_id' => array(
+        'description' => 'The id of the target entity.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'bundles' => array(
+      'user' => array(
+        0 => 'user',
+      ),
+    ),
+  );
+
+  return $fields;
+}
+
+/**
+ * Return array of field_instances.
+ */
+function user_badges_get_field_instances() {
+  $fields = array();
+
+  $fields['user_badge_image'] = array(
+    'label' => t('User Badge Image'),
+    'widget' => array(
+      'weight' => 1,
+      'type' => 'image_image',
+      'module' => 'image',
+      'active' => TRUE,
+      'settings' => array(
+        'progress_indicator' => 'throbber',
+        'preview_image_style' => 'thumbnail',
+      ),
+    ),
+    'settings' => array(
+      'file_directory' => '',
+      'file_extensions' => 'png gif jpg jpeg',
+    ),
+    'display' => array(
+      'default' => array(
+        'label' => 'hidden',
+        'type' => 'image',
+        'module' => 'image',
+        'settings' => array(
+          'image_style' => 'thumbnail',
+          'image_link' => 'content',
+        ),
+        'weight' => 2,
+      ),
+      'full' => array(
+        'label' => 'hidden',
+        'type' => 'image',
+        'module' => 'image',
+        'settings' => array(
+          'image_style' => 'thumbnail',
+          'image_link' => 'content',
+        ),
+        'weight' => 2,
+      ),
+      'teaser' => array(
+        'label' => 'hidden',
+        'type' => 'image',
+        'module' => 'image',
+        'settings' => array(
+          'image_style' => 'thumbnail',
+          'image_link' => 'content',
+        ),
+        'weight' => 2,
+      ),
+    ),
+    'entity_type' => 'user_badge',
+    'bundle' => 'user_badge',
+    'required' => TRUE,
+    'description' => t('User Badge Image'),
+    'field_name' => 'user_badge_image',
+  );
+
+  $fields['user_badge_badges'] = array(
+    'label' => 'User Badge',
+    'widget' => array(
+      'weight' => 1,
+      'type' => 'entityreference_autocomplete_tags',
+      'module' => 'entityreference',
+      'active' => TRUE,
+      'settings' => array(
+        'match_operator' => 'CONTAINS',
+        'size' => 60,
+        'path' => '',
+      ),
+    ),
+    'settings' => array(
+      'user_register_form' => FALSE,
+      'entity_translation_sync' => FALSE,
+    ),
+    'display' => array(
+      'default' => array(
+        'label' => 'hidden',
+        'type' => 'entityreference_entity_view',
+        'module' => 'entityreference',
+        'settings' => array(
+          'view_mode' => 'teaser',
+          'links' => FALSE,
+        ),
+        'weight' => 10,
+      ),
+      'full' => array(
+        'label' => 'hidden',
+        'type' => 'entityreference_entity_view',
+        'module' => 'entityreference',
+        'settings' => array(
+          'view_mode' => 'teaser',
+          'links' => FALSE,
+        ),
+        'weight' => 10,
+      ),
+      'teaser' => array(
+        'label' => 'hidden',
+        'type' => 'entityreference_label',
+        'module' => 'entityreference',
+        'settings' => array(
+          'link' => TRUE,
+          'links' => FALSE,
+        ),
+        'weight' => 10,
+      ),
+    ),
+    'required' => FALSE,
+    'description' => 'User Badge',
+    'field_name' => 'user_badge_badges',
+    'entity_type' => 'user',
+    'bundle' => 'user',
+    'deleted' => '0',
+    'default_value' => NULL,
+  );
+
+  return $fields;
+}
+
+/**
+ * Implements hook_install().
+ */
+function user_badges_install() {
+  foreach (user_badges_get_field_bases() as $field) {
+    field_create_field($field);
+  }
+  foreach (user_badges_get_field_instances() as $field) {
+    field_create_instance($field);
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function user_badges_uninstall() {
+
+  foreach (array_keys((user_badges_get_field_bases())) as $field) {
+    field_delete_field($field);
+  }
+
+  field_purge_batch(1000);
+  db_delete('variable')->condition('name', 'user_badges_%', 'LIKE')->execute();
+  cache_clear_all('variables', 'cache_bootstrap');
+}
