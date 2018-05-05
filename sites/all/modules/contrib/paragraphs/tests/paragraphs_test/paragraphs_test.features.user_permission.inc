@@ -62,12 +62,14 @@ function paragraphs_test_user_default_permissions() {
   );
 
   // Exported permission: 'administer paragraphs bundles'.
+/*
+// Disabled to prevent annoying conflict with site Features
   $permissions['administer paragraphs bundles'] = array(
     'name' => 'administer paragraphs bundles',
     'roles' => array(),
     'module' => 'paragraphs',
   );
-
+*/
   // Exported permission: 'create paragraph_test content'.
   $permissions['create paragraph_test content'] = array(
     'name' => 'create paragraph_test content',

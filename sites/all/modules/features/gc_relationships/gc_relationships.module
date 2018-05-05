@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GC Relationships feature.
+ */
+
+include_once 'gc_relationships.features.inc';

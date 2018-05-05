@@ -1,7 +1,0 @@
-<?php
-/**
- * @file
- * Code for the Issue Tracker feature.
- */
-
-include_once 'issue_tracker.features.inc';

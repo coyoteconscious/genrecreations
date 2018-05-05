@@ -1,0 +1,17 @@
+name = GC Taxonomy
+core = 7.x
+package = GenreCreations
+version = 7.x-1.0
+dependencies[] = ctools
+dependencies[] = features
+dependencies[] = gc_content_types
+dependencies[] = gc_field_bases
+dependencies[] = options
+dependencies[] = strongarm
+dependencies[] = taxonomy
+features[ctools][] = strongarm:strongarm:1
+features[features_api][] = api:2
+features[field_instance][] = node-forum-taxonomy_forums
+features[taxonomy][] = hashtags
+features[taxonomy][] = post_categories
+project path = sites/all/modules/features

@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GC Pathauto feature.
+ */
+
+include_once 'gc_pathauto.features.inc';

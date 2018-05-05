@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GC Taxonomy feature.
+ */
+
+include_once 'gc_taxonomy.features.inc';

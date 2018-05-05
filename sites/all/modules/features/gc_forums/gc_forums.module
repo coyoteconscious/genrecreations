@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the GC Forums feature.
+ */
+
+include_once 'gc_forums.features.inc';
